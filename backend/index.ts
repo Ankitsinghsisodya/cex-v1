@@ -249,7 +249,7 @@ app.post("/order", async (req: Request, res: Response) => {
             }
         })
         let sideEnum = (side == "ASK")? Side.ASK:Side.BID;
-        ORDERBOOKS[stock.symbol][side]
+        ORDERBOOKS[stock.symbol]
         // filledQty
 
 
