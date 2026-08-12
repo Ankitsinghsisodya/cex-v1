@@ -524,15 +524,15 @@ app.post("/order", async (req: Request, res: Response) => {
         });
 
         let filledQty = updateORDERBOOKState(type, price, qty, side, stock, userId);
-        let status : Status = Status.EMPTY;
-        if(filledQty === qty)status = Status.FILLED;
-        else if(filledQty)status = Status.PARTIAL;
+        let status: Status = Status.EMPTY;
+        if (filledQty === qty) status = Status.FILLED;
+        else if (filledQty) status = Status.PARTIAL;
         prisma.order.create({
-            data:{
+            data: {
                 userId,
                 side,
                 type,
-                stockId:stock.id,
+                stockId: stock.id,
                 price,
                 qty,
                 filledQty,
@@ -554,8 +554,70 @@ app.post("/order", async (req: Request, res: Response) => {
     returns the status of an order (partially filled, success, cancellled)
     ALSO RETURNS THE INDIVIDUAL FILLS OF THIS ORDER 
 */
-app.get("/order/:orderId")
-app.delete("/order/:orderId")
+app.get("/order/:orderId", async (req: Request, res: Response) => {
+    try {
+        const order = await prisma.order.findFirst({
+            where: {
+                id: Number(req.params.orderId)
+            }
+        })
+        if (!order) {
+            return res.status(400).json({
+                success: false,
+                message: "wrong orderId"
+            })
+        }
+        const Fills = await prisma.fills.findMany({
+            where: {
+                OR: [
+                    { buyOrderId: Number(req.params.orderId) },
+                    { sellOrderId: Number(req.params.orderId) }
+
+                ]
+            }
+        })
+        return res.status(201).json({
+            success: true,
+            status: order.status,
+            Fills
+        })
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Server side error"
+        })
+    }
+})
+
+
+app.delete("/order/:orderId", async (req: Request, res: Response) => {
+    try {
+        const orderId = Number(req.params.orderId);
+        if (!orderId) {
+            return res.status(400).json({
+                success: false,
+                message: "missing orderId param"
+            })
+        }
+
+        const result = await prisma.order.delete({
+            where:{
+                id: orderId
+            }
+        })
+        return res.status(201).json({
+            success: true,
+            deletedOrder: result
+        })
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Server side error"
+        })
+    }
+})
+
+
 app.get("/depth/:symbol");
 app.get("/orders");
 app.get("/fills");
