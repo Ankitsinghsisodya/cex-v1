@@ -1,36 +1,46 @@
-# dependencies (bun install)
+# Dependencies
 node_modules
 
-# output
+# Output
 out
 dist
 *.tgz
 
-# code coverage
+# Generated Prisma client (regenerated via `bun run generate`)
+/generated/
+
+# Code coverage
 coverage
 *.lcov
 
-# logs
+# Logs
 logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+*.log
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# dotenv environment variable files
+# Environment variables
 .env
 .env.development.local
 .env.test.local
 .env.production.local
 .env.local
 
-# caches
+# Caches
 .eslintcache
 .cache
 *.tsbuildinfo
+
+# AI agent/IDE tool dirs (auto-generated, not project source)
+.agents/
+.claude/
+.windsurf/
+skills-lock.json
+
+# Test/scratch scripts
+test.sh
 
 # IntelliJ based IDEs
 .idea
 
 # Finder (MacOS) folder config
 .DS_Store
-
-/generated/prisma

@@ -2,8 +2,8 @@ import express from "express";
 import type { NextFunction, Request, Response } from "express";
 import { prisma } from "./util"
 import jwt from "jsonwebtoken";
-import { Side, Status, Status } from "./generated/enums";
-import type { stocks } from "./generated/models"
+import { Side, Status } from "./generated/enums";
+import type { stocks } from "./generated/client"
 
 
 
@@ -11,10 +11,16 @@ const app = express();
 
 app.use(express.json());
 
-const BALANCES = {
+const BALANCES: BalanceEntry = {
 
 }
 
+type BalanceEntry = { [userId: number]: currencyDetail }
+
+type currencyDetail = {
+    [k in currencyDetailNames]?: number
+}
+type currencyDetailNames = "USD" | "BTC" | "SOL";
 type OrderEntry = {
     userId: number,
     qty: number,
@@ -90,6 +96,10 @@ app.post("/signup", async (req: Request, res: Response) => {
                 password: hashedPassword
             }
         })
+
+        BALANCES[newUser.id] = {
+            "USD": 0
+        }
 
         return res.status(201).json({
             success: true,
@@ -463,6 +473,7 @@ app.post("/order", async (req: Request, res: Response) => {
             type, price, qty, market_id, side
         } = req.body;
         const userId = req.userId!;
+
         // save an order
         if (!side || (side !== "ASK" && side !== "BID")) {
             return res.status(400).json({
@@ -527,6 +538,14 @@ app.post("/order", async (req: Request, res: Response) => {
         let status: Status = Status.EMPTY;
         if (filledQty === qty) status = Status.FILLED;
         else if (filledQty) status = Status.PARTIAL;
+        const symbol: currencyDetailNames = stock.symbol as currencyDetailNames;
+        if (!BALANCES[userId]) {
+            BALANCES[userId] = { "USD": 0 }
+        }
+        if (!BALANCES[userId][symbol]) {
+            BALANCES[userId][symbol] = 0;
+        }
+        BALANCES[userId][symbol] += filledQty
         prisma.order.create({
             data: {
                 userId,
@@ -601,7 +620,7 @@ app.delete("/order/:orderId", async (req: Request, res: Response) => {
         }
 
         const result = await prisma.order.delete({
-            where:{
+            where: {
                 id: orderId
             }
         })
@@ -618,15 +637,125 @@ app.delete("/order/:orderId", async (req: Request, res: Response) => {
 })
 
 
-app.get("/depth/:symbol");
-app.get("/orders");
-app.get("/fills");
+app.get("/depth/:symbol", async (req: Request, res: Response) => {
+    try {
+        const stockSymbol = req.params.symbol;
+        if (!stockSymbol) {
+            return res.status(401).json({
+                success: false,
+                message: "symbol are not present"
+            })
+        }
+        if (typeof stockSymbol !== "string") {
+            return res.status(401).json({
+                success: false,
+                message: "symbol is not in valid format"
+            })
+        }
+        if (stockSymbol in Object.keys(ORDERBOOKS)) { }
+        {
+            return res.status(201).json({
+                success: false,
+                orderBook: ORDERBOOKS[stockSymbol]
+            })
+        }
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Server side error"
+        })
+    }
+});
+app.get("/orders", async (req: Request, res: Response) => {
+    try {
+        const { userId } = req;
+        const orders = await prisma.order.findMany({
+            where: {
+                userId
+            }
+        });
+        return res.status(201).json({
+            success: true,
+            orders
+        })
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Server side error"
+        })
+    }
+});
+app.get("/fills", async (req: Request, res: Response) => {
+    try {
+        const { userId } = req;
+        const orders = await prisma.fills.findMany({
+            where: {
+                OR: [
+                    { buyOrderId: userId },
+                    { sellOrderId: userId }
+                ]
+            }
+        })
 
-app.get("/balance/usd");
+        return res.status(201).json({
+            success: true,
+            orders
+        })
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Server side error"
+        })
+    }
+});
+
+app.get("/balance/usd", async (req: Request, res: Response) => {
+try {
+    const {userId} = req;
+    if(!userId){
+        return res.status(400).json({
+            success:false,
+            message: "userId is missing"
+        })
+    }
+
+    return res.status(201).json({
+        success:true,
+        usdBalance: BALANCES[userId]?.['USD']
+    })
+} catch (error) {
+    return res.status(500).json({
+        success:false,
+        message: "Server side error"
+    })
+}
+});
 
 /*  
     Returns the balance of all stocks
 */
-app.get("/balance")
+app.get("/balance", async (req: Request, res: Response) => {
+    try {
+        const { userId } = req;
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: "user is not logged In"
+            })
+        }
+        return res.status(201).json({
+            success: true,
+            balance: BALANCES[userId]
+        })
+    } catch (error) {
+        return res.status(500).json({
+            sucess: false,
+            message: "Server side error"
+        })
+    }
 
-app.listen(3000);
+})
+
+app.listen(3000, () => {
+    console.log("tmkc")
+});

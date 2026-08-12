@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Lock files at root (use backend/bun.lock instead)
+bun.lock
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+*.swp
+*.swo
