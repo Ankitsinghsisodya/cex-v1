@@ -224,8 +224,8 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
 function clearAllTheOrderForMarketOrder(bookWithBid: { [price: number]: PriceLevel }, price: number, userId: number, stock: stocks, qty: number) {
     if (bookWithBid[price]) {
         bookWithBid[price].totalQty = 0;
-        bookWithBid[price].Order.forEach((order) => {
-            prisma.fills.create({
+        bookWithBid[price].Order.forEach(async (order) => {
+                await prisma.fills.create({
                 data: {
                     stockId: stock.id,
                     price,
@@ -242,10 +242,10 @@ function clearAllTheOrderForMarketOrder(bookWithBid: { [price: number]: PriceLev
 function ReducetheQty(bookWithBid: { [price: number]: PriceLevel }, price: number, userId: number, stock: stocks, qty: number, req: number) {
     if (bookWithBid[price]) {
         let newOrderList: OrderEntry[] = [];
-        bookWithBid[price].Order.forEach((order) => {
+        bookWithBid[price].Order.forEach(async (order) => {
             if (req >= order.qty) {
                 req -= order.qty;
-                prisma.fills.create({
+                await prisma.fills.create({
                     data: {
                         stockId: stock.id,
                         price,
@@ -257,7 +257,7 @@ function ReducetheQty(bookWithBid: { [price: number]: PriceLevel }, price: numbe
             }
             else if (req) {
                 req = 0;
-                prisma.fills.create({
+               await prisma.fills.create({
                     data: {
                         stockId: stock.id,
                         price,
@@ -284,9 +284,10 @@ function askLimitOrder(bookWithBid: { [price: number]: PriceLevel }, priceAsked:
     for (const [price, PriceLevel] of Object.entries(bookWithBid).sort(([priceA, priceB]) => Number(priceB) - Number(priceA))) {
         if (Number(price) >= priceAsked) {
             if (qty >= PriceLevel.totalQty) {
+                qty -= PriceLevel.totalQty;
                 PriceLevel.totalQty = 0;
-                PriceLevel.Order.forEach((order) => {
-                    prisma.fills.create({
+                PriceLevel.Order.forEach(async(order) => {
+                    await prisma.fills.create({
                         data: {
                             stockId: stock.id,
                             price: Number(price),
@@ -299,14 +300,13 @@ function askLimitOrder(bookWithBid: { [price: number]: PriceLevel }, priceAsked:
                 })
 
                 PriceLevel.Order = [];
-                qty -= PriceLevel.totalQty;
             }
             else if (qty) {
                 PriceLevel.totalQty -= qty;
                 let notCompleteOrder: OrderEntry[] = [];
-                PriceLevel.Order.forEach((order) => {
+                PriceLevel.Order.forEach(async(order) => {
                     if (qty && qty <= order.qty) {
-                        prisma.fills.create({
+                       await prisma.fills.create({
                             data: {
                                 stockId: stock.id,
                                 price: Number(price),
@@ -318,7 +318,7 @@ function askLimitOrder(bookWithBid: { [price: number]: PriceLevel }, priceAsked:
                         qty -= order.qty;
                     }
                     else if (qty) {
-                        prisma.fills.create({
+                        await prisma.fills.create({
                             data: {
                                 stockId: stock.id,
                                 price: Number(price),
@@ -354,9 +354,10 @@ function bidLimitOrder(bookWithBid: { [price: number]: PriceLevel }, priceAsked:
     for (const [price, PriceLevel] of Object.entries(bookWithBid).sort(([priceA, priceB]) => Number(priceB) - Number(priceA))) {
         if (Number(price) <= priceAsked) {
             if (qty >= PriceLevel.totalQty) {
+                qty -= PriceLevel.totalQty;
                 PriceLevel.totalQty = 0;
-                PriceLevel.Order.forEach((order) => {
-                    prisma.fills.create({
+                PriceLevel.Order.forEach(async (order) => {
+                   await prisma.fills.create({
                         data: {
                             stockId: stock.id,
                             price: Number(price),
@@ -369,14 +370,13 @@ function bidLimitOrder(bookWithBid: { [price: number]: PriceLevel }, priceAsked:
                 })
 
                 PriceLevel.Order = [];
-                qty -= PriceLevel.totalQty;
             }
             else if (qty) {
                 PriceLevel.totalQty -= qty;
                 let notCompleteOrder: OrderEntry[] = [];
-                PriceLevel.Order.forEach((order) => {
+                PriceLevel.Order.forEach(async (order) => {
                     if (qty && qty <= order.qty) {
-                        prisma.fills.create({
+                        await prisma.fills.create({
                             data: {
                                 stockId: stock.id,
                                 price: Number(price),
@@ -388,7 +388,7 @@ function bidLimitOrder(bookWithBid: { [price: number]: PriceLevel }, priceAsked:
                         qty -= order.qty;
                     }
                     else if (qty) {
-                        prisma.fills.create({
+                        await prisma.fills.create({
                             data: {
                                 stockId: stock.id,
                                 price: Number(price),
@@ -459,7 +459,7 @@ function updateORDERBOOKState(type: string, price: number, qty: number, side: st
             return filledQty;
         }
         else {
-            return bidLimitOrder(book["BID"], price, qty, stock, userId)
+            return bidLimitOrder(book["ASK"], price, qty, stock, userId)
         }
     }
     return 0;
@@ -500,18 +500,6 @@ app.post("/order", async (req: Request, res: Response) => {
             })
         }
 
-        const order = await prisma.order.create({
-            data: {
-                userId,
-                side,
-                type,
-                stockId: stock.id,
-                price,
-                qty,
-                filledQty: 0,
-                status: Status.EMPTY
-            }
-        })
         // let sideEnum = (side == "ASK")? "ASK":"BID";
         const sideEnum: "ASK" | "BID" = side === "ASK" ? "ASK" : "BID";
         const book = ORDERBOOKS[stock.symbol];
@@ -521,18 +509,6 @@ app.post("/order", async (req: Request, res: Response) => {
                 message: "Invalid stock"
             })
         }
-
-        if (!book[sideEnum][price]) {
-            book[sideEnum][price] = { totalQty: 0, Order: [] }
-        }
-
-        book[sideEnum][price].totalQty += qty;
-        book[sideEnum][price].Order.push({
-            userId: order.userId,
-            filledQty: order.filledQty,
-            qty: qty,
-            orderId: order.id
-        });
 
         let filledQty = updateORDERBOOKState(type, price, qty, side, stock, userId);
         let status: Status = Status.EMPTY;
@@ -546,7 +522,7 @@ app.post("/order", async (req: Request, res: Response) => {
             BALANCES[userId][symbol] = 0;
         }
         BALANCES[userId][symbol] += filledQty
-        prisma.order.create({
+        const newOrder = await prisma.order.create({
             data: {
                 userId,
                 side,
@@ -561,7 +537,11 @@ app.post("/order", async (req: Request, res: Response) => {
         // ORDERBOOKS[stock.symbol][side][price]?.totalQty += qty;
         // filledQty
 
-
+        return res.status(201).json({
+            success: true,
+            message: "Order created successfully",
+            newOrder
+        })
     } catch (error) {
         res.status(500).json({
             success: false,
@@ -652,13 +632,18 @@ app.get("/depth/:symbol", async (req: Request, res: Response) => {
                 message: "symbol is not in valid format"
             })
         }
-        if (stockSymbol in Object.keys(ORDERBOOKS)) { }
-        {
-            return res.status(201).json({
+        if (stockSymbol in Object.keys(ORDERBOOKS)) {
+            return res.status(404).json({
                 success: false,
-                orderBook: ORDERBOOKS[stockSymbol]
+                message: "Invalid stock symbol"
             })
         }
+
+        return res.status(201).json({
+            success: false,
+            orderBook: ORDERBOOKS[stockSymbol]
+        })
+
     } catch (error) {
         return res.status(500).json({
             success: false,
@@ -710,25 +695,25 @@ app.get("/fills", async (req: Request, res: Response) => {
 });
 
 app.get("/balance/usd", async (req: Request, res: Response) => {
-try {
-    const {userId} = req;
-    if(!userId){
-        return res.status(400).json({
-            success:false,
-            message: "userId is missing"
+    try {
+        const { userId } = req;
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: "userId is missing"
+            })
+        }
+
+        return res.status(201).json({
+            success: true,
+            usdBalance: BALANCES[userId]?.['USD']
+        })
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Server side error"
         })
     }
-
-    return res.status(201).json({
-        success:true,
-        usdBalance: BALANCES[userId]?.['USD']
-    })
-} catch (error) {
-    return res.status(500).json({
-        success:false,
-        message: "Server side error"
-    })
-}
 });
 
 /*  
